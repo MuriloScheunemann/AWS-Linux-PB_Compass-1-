@@ -1,7 +1,7 @@
 # 1º Trabalho - Estágio AWS & DevSecOps - Compass UOL
-Criar um servidor Linux NFS (Network File System) numa instância EC2 na AWS.
+**Criar uma instância EC2 com Apache e um compartilhamento NFS; Configurar um script de validação(Online/Offline) do Apache e enviar logs do status, de 5 em 5 minutos, para um diretório no compartilhamento NFS**
 
-**Referências:** [Create an NFS server on Oracle Linux](https://docs.oracle.com/en/learn/create_nfs_linux/#introduction); [Network File System(RedHat Documentation)](https://access.redhat.com/documentation/pt-br/red_hat_enterprise_linux/6/html/storage_administration_guide/ch-nfs#s1-nfs-how); 
+**Referências:** [Create an NFS server on Oracle Linux](https://docs.oracle.com/en/learn/create_nfs_linux/#introduction); [Network File System(RedHat Documentation)](https://access.redhat.com/documentation/pt-br/red_hat_enterprise_linux/6/html/storage_administration_guide/ch-nfs#s1-nfs-how); [Display Date And Time In Linux](https://www.cyberciti.biz/faq/linux-display-date-and-time/)
 ## Requisitos AWS
 * Gerar uma chave pública para acesso ao ambiente;
 * Criar 1 instância EC2 com o sistema operacional Amazon Linux 2 (Família t3.small, 16 GB SSD);
@@ -34,8 +34,53 @@ Pré-requisitos: uma conta AWS com AdministratorAccess ou, pelo menos, AmazonEC2
 ## Configuração do ambiente Linux
 ### Configurando o NFS
 1. Verificar se o NFS está instalado com `systemctl status nfs-server.service`. Caso não estiver, executar `sudo yum install nfs-utils -y` e `sudo systemctl start nfs-server`; 
-2. Criar um diretório de compartilhamento, no diretório raiz, com permissão total para todos. Executar: `sudo mkdir nfs -m 777`;
+2. Criar um diretório de compartilhamento, dentro do diretório /mnt, com permissão total para todos. Executar: `sudo mkdir nfs -m 777`;
 3. Dentro do diretório 'nfs', criar outro diretório, com permissão total para todos: executar `sudo mkdir murilo -m 777`;
 4. Configurar compartilhamento NFS global do diretório 'nfs' editando /etc/exports. Adicionar a seguinte linha: `/nfs *(rw)`;
 5. Restartar o serviço NFS para que as modificações sejam implementadas e habilitar inicialização no boot. Executar `systemctl restart nfs-server` e `systemctl enable nfs-server`;
 ### Instalando o Apache
+1. Instalar o Apache. Executar: `sudo yum install httpd`;
+2. Iniciar o Apache. Executar: `sudo systemctl start httpd`;
+3. Habilitar a inicialização do Apache no boot. Executar: `sudo systemctl enable httpd`;
+4. Verificar o status do Apache. Executar `systemctl status httpd`  
+### Ajustando a date e hora do sistema
+1. Verificar se a data e hora atuais do sistema estão corretas. Verificar com o comando `date`;
+2. Se houver divergência, a região geográfica de referência deve ser alterada. Listar as regiões com `timedatectl list-timezones`;
+3. Modificar a região com o comando `sudo timedatectl set-timezone nome_da_zona`. Para o caso de horário de Brasília: `sudo timedatectl set-timezone America/Sao_Paulo`.
+### Criando o script
+1. Criar um arquivo ShellScript no diretório raiz. Executar `sudo touch script.sh`;
+2. Editar o arquivo do script, adicionando o seguinte código:
+```
+#!/bin/bash
+
+DATAHORA=$(date +"%d/%m/%y-%T")
+STATUS=$(systemctl is-active httpd)
+
+if [ $STATUS = "active" ]; then
+  echo -e "$DATAHORA - servico:Apache - status:Ativo - O Apache está\e[;32;01m ONLINE \e[m " >> /mnt/nfs/murilo/online
+else
+  echo -e "$DATAHORA - servico:Apache - status:Inativo - O Apache está\e[;31;01m OFFLINE \e[m " >> /mnt/nfs/murilo/offline
+fi
+```
+3. Tornar o script executável. Executar `sudo chmod +x /script.sh`;
+### Criando a rotina de execução do script com Cron
+1. Abrir o editor do Cron. Executar `crontab -e`;
+2. Criar uma rotina de execução do arquivo script.sh de 5 em 5 minutos. Adicionar a seguinte linha: `*/5 * * * * sudo bash /script.sh`
+3. Salvar a tarefa criada e verificar com o comando `crontab -l`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
