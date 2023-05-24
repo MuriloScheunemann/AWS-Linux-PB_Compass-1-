@@ -36,8 +36,9 @@
 Pré-requisitos: uma conta AWS com AdministratorAccess ou, pelo menos, AmazonEC2FullAccess.  
 ### Gerando a chave de acesso
 1. Dentro da console AWS, na seção de EC2, na aba *Network & Security*, selecionar *Key pairs*;
-2. Clicar em *Create key pair*; depois, dar um nome à chave, selecionar o tipo *RSA*, o formato *.pem* e clicar em *create key pair*;
-3. Salvar a chave num local seguro;
+2. Clicar em *Create key pair*; depois, dar um nome à chave, selecionar o tipo *RSA*, o formato *.pem* ou *.ppk* e clicar em *create key pair*; 
+(*.pem* = acesso via OpenSSH | *.ppk* = acesso via Putty)
+4. Salvar a chave num local seguro;
 ### Criando o Security-Group
 1. Na aba *Network & Security*, selecionar *Security group*; clicar em *create security group*;
 2. Dar um nome ao Security Group; selecionar a VPC default (ou uma VPC personalizada com internet gateway e tabela de roteamento);
@@ -64,14 +65,18 @@ Pré-requisitos: uma conta AWS com AdministratorAccess ou, pelo menos, AmazonEC2
 ### Criando um IP fixo para a instância (Elastic IP)
 1. Na aba *Network & Security*, selecionar *Elastic IPs*; 
 2. Clicar em *Allocate Elastic IP Address*; 
-
+3. Selecionar a região em que a instância está; clicar em *Allocate*;
+4. Clicar sobre o Elastic IP criado; clicar em *Actions* e depois *Associate Elastic IP Address*; selecionar a instância criada anteriormente.
 ## Configuração do ambiente Linux
 ### Configurando o NFS
 1. Verificar se o NFS está instalado com `systemctl status nfs-server.service`. Caso não estiver, executar `sudo yum install nfs-utils -y` e `sudo systemctl start nfs-server`; 
-2. Criar um diretório de compartilhamento, dentro do diretório /mnt, com permissão total para todos. Executar: `sudo mkdir nfs -m 777`;
-3. Dentro do diretório 'nfs', criar outro diretório, com permissão total para todos: executar `sudo mkdir murilo -m 777`;
-4. Configurar compartilhamento NFS global do diretório 'nfs' editando /etc/exports. Adicionar a seguinte linha: `/nfs *(rw)`;
-5. Restartar o serviço NFS para que as modificações sejam implementadas e habilitar inicialização no boot. Executar `systemctl restart nfs-server` e `systemctl enable nfs-server`;
+2. Criar um diretório de compartilhamento, dentro do diretório '/mnt'. Executar: `sudo mkdir /mnt/nfs`;
+3. Dentro do diretório '/mnt/nfs', criar outro diretório. Executar `sudo mkdir /mnt/nfs/murilo`;
+4. Dar permissão total recursivamente para o diretório '/mnt': `sudo chmod 777 /mnt -R`
+5. Configurar compartilhamento NFS global do diretório 'nfs' editando /etc/exports. Adicionar a seguinte linha: `/mnt/nfs *(rw)`; verificar a exportação com o comando `showmount -e`
+6. Restartar o serviço NFS para que as modificações sejam implementadas e habilitar inicialização no boot. Executar `sudo systemctl restart nfs-server` e `sudo systemctl enable nfs-server`;
+
+*Diretório compartilhado:* **/mnt/nfs**
 ### Instalando o Apache
 1. Instalar o Apache. Executar: `sudo yum install httpd`;
 2. Iniciar o Apache. Executar: `sudo systemctl start httpd`;
@@ -82,8 +87,8 @@ Pré-requisitos: uma conta AWS com AdministratorAccess ou, pelo menos, AmazonEC2
 2. Se houver divergência, a região geográfica de referência deve ser alterada. Listar as regiões com `timedatectl list-timezones`;
 3. Modificar a região com o comando `sudo timedatectl set-timezone nome_da_zona`. Para o caso de horário de Brasília: `sudo timedatectl set-timezone America/Sao_Paulo`.
 ### Criando o script
-1. Criar um arquivo ShellScript no diretório raiz. Executar `sudo touch script.sh`;
-2. Editar o arquivo do script, adicionando o seguinte código:
+1. Criar um arquivo ShellScript no diretório raiz. Executar `sudo touch /script.sh`;
+2. Editar o arquivo do script executando, adicionando o seguinte código:
 ```
 #!/bin/bash
 
@@ -98,9 +103,11 @@ fi
 ```
 3. Tornar o script executável. Executar `sudo chmod +x /script.sh`;
 ### Criando a rotina de execução do script com Cron
-1. Abrir o editor do Cron. Executar `crontab -e`;
-2. Criar uma rotina de execução do arquivo script.sh de 5 em 5 minutos. Adicionar a seguinte linha: `*/5 * * * * sudo bash /script.sh`
-3. Salvar a tarefa criada e verificar com o comando `crontab -l`.
+1. Abrir o editor do Cron. Executar `sudo crontab -e`;
+2. Criar uma rotina de execução do arquivo *script.sh* de 5 em 5 minutos. Adicionar a seguinte linha: `*/5 * * * * sudo bash /script.sh`
+3. Salvar a tarefa criada e verificar com o comando `sudo crontab -l`.
+
+
 
 
 
