@@ -1,17 +1,19 @@
 # 1º Trabalho - Estágio AWS & DevSecOps - Compass UOL
-**Criar uma instância EC2 Linux com Apache e um compartilhamento NFS; Configurar um script de validação(Online/Offline) do Apache e enviar logs do status, de 5 em 5 minutos, para um diretório no compartilhamento NFS**
+**Criar uma instância EC2 Linux com Apache e um EFS(Elastic File System); Configurar um script de validação(Online/Offline) do Apache e enviar logs do status, de 5 em 5 minutos, para um diretório no compartilhamento NFS**
 
-**Referências:** [Create an NFS server on Oracle Linux](https://docs.oracle.com/en/learn/create_nfs_linux/#introduction); [Network File System(RedHat Documentation)](https://access.redhat.com/documentation/pt-br/red_hat_enterprise_linux/6/html/storage_administration_guide/ch-nfs#s1-nfs-how); [Display Date And Time In Linux](https://www.cyberciti.biz/faq/linux-display-date-and-time/)
+**Referências:** [Create an NFS server on Oracle Linux](https://docs.oracle.com/en/learn/create_nfs_linux/#introduction); [Network File System(RedHat Documentation)](https://access.redhat.com/documentation/pt-br/red_hat_enterprise_linux/6/html/storage_administration_guide/ch-nfs#s1-nfs-how); [Display Date And Time In Linux](https://www.cyberciti.biz/faq/linux-display-date-and-time/);
+[Create an Amazon EFS Filesystem(Youtube)](https://www.youtube.com/watch?v=GG8PAAOUGBg);[Using the EFS mount helper to automatically re-mount EFS file systems(Amazon Docs)](https://docs.aws.amazon.com/efs/latest/ug/automount-with-efs-mount-helper.html)
 # Índice
 - [Requisitos AWS](#requisitos-aws)
 - [Requisitos Linux](#requisitos-linux)
 - [Configuração do ambiente AWS (Via Console)](#configuração-do-ambiente-aws-via-console)
 	+ [Gerando a chave de acesso](#gerando-a-chave-de-acesso)
-	+ [Criando o Security Group](#criando-o-security-group)
+	+ [Criando os Security Groups EC2 e EFS](#criando-os-security-groups-ec2-e-efs)
 	+ [Criando a instância EC2](#criando-a-instância-ec2)
 	+ [Criando um IP fixo para a instância (Elastic IP)](#criando-um-ip-fixo-para-a-instância-elastic-ip)
+	+ [Criando o EFS na AWS](criando-o-efs-na-aws)
 - [Configuração do ambiente Linux](#configuração-do-ambiente-linux)
-	+ [Configurando o NFS](#configurando-o-nfs)
+	+ [Configurando o EFS no Linux](#configurando-o-efs-no-linux)
 	+ [Instalando o Apache](#instalando-o-apache)
 	+ [Ajustando a data e hora do sistema](#ajustando-a-data-e-hora-do-sistema)
 	+ [Criando o script](#criando-o-script)
@@ -33,26 +35,34 @@
 * Fazer o versionamento da atividade;
 * Fazer a documentação explicando o processo de instalação do Linux.
 ## Configuração do ambiente AWS (via Console)
-Pré-requisitos: uma conta AWS com AdministratorAccess ou, pelo menos, AmazonEC2FullAccess.  
 ### Gerando a chave de acesso
 1. Dentro da console AWS, na seção de EC2, na aba *Network & Security*, selecionar *Key pairs*;
 2. Clicar em *Create key pair*; depois, dar um nome à chave, selecionar o tipo *RSA*, o formato *.pem* ou *.ppk* e clicar em *create key pair*; 
 (*.pem* = acesso via OpenSSH | *.ppk* = acesso via Putty)
 4. Salvar a chave num local seguro;
-### Criando o Security-Group
-1. Na aba *Network & Security*, selecionar *Security group*; clicar em *create security group*;
-2. Dar um nome ao Security Group; selecionar a VPC default (ou uma VPC personalizada com internet gateway e tabela de roteamento);
+### Criando os Security Groups (EC2 e EFS)
+1. **Criar um security group para a instância EC2:** Na aba *Network & Security*, selecionar *Security group*; clicar em *create security group*;
+2. Dar um nome ao Security Group(SG-NFS); selecionar a VPC default (ou uma VPC personalizada com internet gateway e tabela de roteamento);
 3. Adicionar em *Inbound Rules* as seguintes regras de entrada:
 
 |     Type      |   Protocol    |   Port Range   |   Source   | 
 | ------------- | ------------- | -------------- | ---------- |
 |  Custom TCP   |      TCP      |       22       |  0.0.0.0/0 |  
-|  Custom TCP   |      TCP      |        111     |  0.0.0.0/0 |
-|  Custom UDP   |      UDP      |        111     |  0.0.0.0/0 |
-|  Custom TCP   |      TCP      |        2049    |  0.0.0.0/0 |
-|  Custom UDP   |      UDP      |        2049    |  0.0.0.0/0 |
-|  Custom TCP   |      TCP      |        80      |  0.0.0.0/0 |
-|  Custom TCP   |      TCP      |        443     |  0.0.0.0/0 |
+|  Custom TCP   |      TCP      |        111     |  My IP     |
+|  Custom UDP   |      UDP      |        111     |  My IP     |
+|  Custom TCP   |      TCP      |        2049    |  My IP     |
+|  Custom UDP   |      UDP      |        2049    |  My IP     |
+|  Custom TCP   |      TCP      |        80      |  My IP     |
+|  Custom TCP   |      TCP      |        443     |  My IP     |
+
+4. **Criar um security group para o Mount Target do EFS:** clicar em *create security group*;
+5. Dar um nome ao security group(Acesso-EFS); selecionar a VPC default (ou uma VPC personalizada com internet gateway e tabela de roteamento);
+6. Liberar tráfego SSH global e NFS para o security group da instância que irá acessar o EFS. Dessa forma, o Target Group só aceitará comunicação com a instância que for deste security group. Adicionar as seguintes *inbound rules*:
+
+|     Type      |   Protocol    |   Port Range   |   Source   | 
+| ------------- | ------------- | -------------- | ---------- |
+|      SSH      |      TCP      |       22       |  0.0.0.0\0 |
+|      NFS      |      TCP      |      2049      |  id_SG-NFS |
 ### Criando a instância EC2
 1. Na seção de EC2, na aba *instances*, clicar em *instances*, e depois clicar em *launch instances* (no canto superior esquerdo);	
 2. Selecionar a AMI Amazon Linux 2;
@@ -67,16 +77,20 @@ Pré-requisitos: uma conta AWS com AdministratorAccess ou, pelo menos, AmazonEC2
 2. Clicar em *Allocate Elastic IP Address*; 
 3. Selecionar a região em que a instância está; clicar em *Allocate*;
 4. Clicar sobre o Elastic IP criado; clicar em *Actions* e depois *Associate Elastic IP Address*; selecionar a instância criada anteriormente.
+### Criando o EFS na AWS
+1. No console AWS, na seção de EFS, clicar em *create file system*;
+2. Dar um nome ao EFS, selecionar a VCP default (ou a mesma VPC da instância, no caso) e clicar em *create*;
+3. Abrir a página para gerenciar o EFS. Selecionar o EFS criado e clicar em *view details*;
+4. Configurar os Mount Targets. Abrir a aba *Network*, em *Target Groups* clicar em *manage*. Habilitar Mount Target na AZ onde está a máquina que irá se comunicar com o EFS. Selecionar o security group criado anteriormente (Acesso-EFS); 
 ## Configuração do ambiente Linux
-### Configurando o NFS
-1. Verificar se o NFS está instalado com `systemctl status nfs-server.service`. Caso não estiver, executar `sudo yum install nfs-utils -y` e `sudo systemctl start nfs-server`; 
-2. Criar um diretório de compartilhamento, dentro do diretório '/mnt'. Executar: `sudo mkdir /mnt/nfs`;
-3. Dentro do diretório '/mnt/nfs', criar outro diretório. Executar `sudo mkdir /mnt/nfs/murilo`;
-4. Dar permissão total recursivamente para o diretório '/mnt': `sudo chmod 777 /mnt -R`
-5. Configurar compartilhamento NFS global do diretório 'nfs' editando /etc/exports. Adicionar a seguinte linha: `/mnt/nfs *(rw)`; verificar a exportação com o comando `showmount -e`
-6. Restartar o serviço NFS para que as modificações sejam implementadas e habilitar inicialização no boot. Executar `sudo systemctl restart nfs-server` e `sudo systemctl enable nfs-server`;
+### Configurando o EFS no Linux
+1. Instalar o pacote 'amazon-efs-utils', que provê ferramentas(mount helper) que ajudam na manipulação do EFS. Executar: `sudo yum install amazon-efs-utils`; 
+2. Criar um diretório de compartilhamento, dentro do diretório '/mnt'. Executar: `sudo mkdir /mnt/EFS`;
+3. Editar o arquivo /etc/fstab, declarando a montagem(persistente) do EFS no diretório /mnt/EFS/. Adicionar: `id_do_EFS	/mnt/EFS        efs     defaults,_netdev        0       0`;
+4. Realizar a montagem declarada no /etc/fstab. Executar `mount -a`;
+5. Dentro do compartilhamento, localizado em /mnt/EFS, criar outro diretório. Executar `cd /mnt/EFS | sudo mkdir murilo`.
 
-*Diretório compartilhado:* **/mnt/nfs**
+*Montagem do EFS:* **/mnt/EFS**
 ### Instalando o Apache
 1. Instalar o Apache. Executar: `sudo yum install httpd`;
 2. Iniciar o Apache. Executar: `sudo systemctl start httpd`;
@@ -96,9 +110,9 @@ DATAHORA=$(date +"%d/%m/%y-%T")
 STATUS=$(systemctl is-active httpd)
 
 if [ $STATUS = "active" ]; then
-  echo -e "$DATAHORA - servico:Apache - status:Ativo - O Apache está\e[;32;01m ONLINE \e[m " >> /mnt/nfs/murilo/online
+  echo -e "$DATAHORA - servico:Apache - status:Ativo - O Apache está\e[;32;01m ONLINE \e[m " >> /mnt/EFS/murilo/online
 else
-  echo -e "$DATAHORA - servico:Apache - status:Inativo - O Apache está\e[;31;01m OFFLINE \e[m " >> /mnt/nfs/murilo/offline
+  echo -e "$DATAHORA - servico:Apache - status:Inativo - O Apache está\e[;31;01m OFFLINE \e[m " >> /mnt/EFS/murilo/offline
 fi
 ```
 3. Tornar o script executável. Executar `sudo chmod +x /script.sh`;
